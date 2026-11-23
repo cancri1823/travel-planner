@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>全方位旅遊與登山規劃系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body { font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; }
+    .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+    .accordion-content { display: none; }
+    .accordion-item.open .accordion-content { display: block; }
+    .accordion-item.open .accordion-arrow { transform: rotate(180deg); }
+    .leaflet-container { font-family: inherit; z-index: 1; }
+    .pin-marker {
+      width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg); border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center;
+    }
+    .pin-marker span { transform: rotate(45deg); color: #fff; font-size: 12px; font-weight: 700; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+<!-- ==================== 入口總覽頁面 (Portal View) ==================== -->
+<div id="portalView" class="min-h-screen flex flex-col">
+  <header class="bg-gradient-to-r from-slate-900 via-slate-800 to-teal-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <span class="text-2xl">🗺️</span>
+        <div>
+          <h1 class="text-lg font-bold tracking-wide leading-tight">全方位旅遊與登山規劃系統</h1>
+          <p class="text-xs text-slate-300">離線本機儲存 · 多圖層地圖 · 雲端同步</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="btnPortalNewTrip" type="button" class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold rounded-lg shadow transition">＋ 新旅遊</button>
+        <button id="btnPortalSettings" type="button" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition">☁️ 雲端 / 匯出入 / API</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
+    <!-- 搜尋與統計列 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+      <div class="lg:col-span-5 relative">
+        <input id="portalSearch" type="text" placeholder="🔍 搜尋旅程名稱、地點、旅伴..." class="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        <button id="btnClearSearch" type="button" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <div id="portalStats" class="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+    </div>
+
+    <!-- 分類頁籤 -->
+    <div id="portalTabs" class="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+      <button data-tab="all" class="portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-teal-600 text-white shadow-sm">全部旅程</button>
+      <button data-tab="domestic" class="portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-slate-600 hover:bg-slate-200 border border-slate-200">🇹🇼 國內旅遊</button>
+      <button data-tab="international" class="portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-slate-600 hover:bg-slate-200 border border-slate-200">✈️ 國外旅遊</button>
+      <button data-tab="hiking" class="portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-slate-600 hover:bg-slate-200 border border-slate-200">⛰️ 登山 / 健行</button>
+    </div>
+
+    <!-- 旅程分類列表容器 -->
+    <div id="portalTripSections" class="space-y-8"></div>
+  </main>
+</div>
+
+<!-- ==================== 行程規劃詳細頁 (Planner View) ==================== -->
+<div id="plannerView" class="hidden h-screen flex flex-col overflow-hidden">
+  <header class="bg-slate-900 text-white px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 shadow z-30 shrink-0">
+    <div class="flex items-center gap-2 min-w-0">
+      <button id="btnBackPortal" type="button" class="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-semibold shrink-0">← 返回總覽</button>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <h2 id="plannerTitle" class="font-bold text-sm sm:text-base truncate max-w-[220px] sm:max-w-md"></h2>
+          <span id="plannerBadges" class="flex items-center gap-1"></span>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <button id="btnExpandAll" type="button" class="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs">全部展開</button>
+      <button id="btnCollapseAll" type="button" class="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs">全部收合</button>
+      <button id="btnDuplicateCurrent" type="button" class="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 rounded-lg text-xs">複製旅程</button>
+      <button id="btnPlannerSettings" type="button" class="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 rounded-lg text-xs">☁️ 同步/備份</button>
+      <button id="btnMobileToggle" type="button" class="lg:hidden px-2.5 py-1.5 bg-amber-500 text-slate-900 font-semibold rounded-lg text-xs">🗺️ 切換地圖</button>
+    </div>
+  </header>
+
+  <div class="flex-1 flex overflow-hidden relative">
+    <!-- 左側表單區 (58%) -->
+    <section id="plannerLeft" class="w-full lg:w-[58%] h-full overflow-y-auto custom-scroll p-3 sm:p-4 space-y-3 bg-slate-100">
+      <div id="accordionContainer" class="space-y-3 pb-12"></div>
+    </section>
+
+    <!-- 右側地圖區 (42%) -->
+    <section id="plannerRight" class="hidden lg:flex flex-col w-full lg:w-[42%] h-full border-l border-slate-300 bg-white relative">
+      <!-- Google 地圖搜尋與網址/座標匯入列 -->
+      <div class="p-2.5 bg-slate-50 border-b border-slate-200 space-y-2 z-20">
+        <div id="targetLockBanner" class="hidden bg-amber-100 border border-amber-400 text-amber-900 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between">
+          <span id="targetLockText" class="font-semibold">🎯 鎖定目標項目中</span>
+          <button id="btnCancelLock" type="button" class="text-amber-800 underline font-semibold">取消鎖定</button>
+        </div>
+
+        <div class="flex gap-1.5 relative">
+          <input id="mapSearchInput" type="text" placeholder="搜尋地點（或貼上 Google Maps 網址 / 座標）" class="flex-1 px-3 py-1.5 text-xs sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
+          <button id="btnMapSearch" type="button" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg shrink-0">搜尋/解析</button>
+          <button id="btnOpenGoogleMaps" type="button" title="在 Google Maps 開啟搜尋" class="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-xs rounded-lg shrink-0">🌐 Google地圖</button>
+          <div id="mapSearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-300 rounded-lg shadow-xl max-h-60 overflow-y-auto z-50 divide-y divide-slate-100"></div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></i>景點</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block"></i>餐廳</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-full bg-purple-600 inline-block"></i>住宿</span>
+            <span class="inline-flex items-center gap-1"><i class="w-2.5 h-2.5 rounded-full bg-emerald-600 inline-block"></i>伴手禮</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-slate-400">點地圖可選點</span>
+            <button id="btnFitBounds" type="button" class="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-medium">縮放全部</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Leaflet 地圖容器 -->
+      <div class="flex-1 relative">
+        <div id="leafletMap" class="w-full h-full"></div>
+
+        <!-- 臨時標記一鍵加入卡片 -->
+        <div id="tempPinCard" class="hidden absolute bottom-3 left-3 right-3 bg-white/95 backdrop-blur border border-slate-300 rounded-xl shadow-2xl p-3 z-[500] space-y-2">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 space-y-1.5">
+              <div class="text-xs font-bold text-rose-600 flex items-center gap-1">
+                <span>📍 已選定位置</span>
+                <span id="tempPinCoord" class="font-mono text-[11px] text-slate-500"></span>
+              </div>
+              <input id="tempPinName" type="text" placeholder="地點名稱" class="w-full px-2.5 py-1 text-xs border border-slate-300 rounded-md" />
+              <input id="tempPinAddr" type="text" placeholder="地址或位置備註" class="w-full px-2.5 py-1 text-xs border border-slate-300 rounded-md" />
+            </div>
+            <button id="btnCloseTempPin" type="button" class="text-slate-400 hover:text-slate-700 text-sm px-1">✕</button>
+          </div>
+          <div id="tempPinLockAction" class="hidden">
+            <button id="btnApplyTempToTarget" type="button" class="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow">✅ 套用地點與座標至此項目</button>
+          </div>
+          <div id="tempPinAddActions" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <button data-add-type="attractions" class="temp-add-btn py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg">＋ 景點</button>
+            <button data-add-type="restaurants" class="temp-add-btn py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold rounded-lg">＋ 餐廳</button>
+            <button data-add-type="accommodations" class="temp-add-btn py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg">＋ 住宿</button>
+            <button data-add-type="souvenirs" class="temp-add-btn py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg">＋ 伴手禮</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ==================== 新增旅程彈窗 ==================== -->
+<div id="newTripModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-slate-800 text-white px-5 py-3.5 flex items-center justify-between">
+      <h3 class="font-bold text-base">＋ 建立新旅程</h3>
+      <button id="btnCloseNewTrip" type="button" class="text-slate-300 hover:text-white">✕</button>
+    </div>
+    <form id="newTripForm" class="p-5 space-y-3.5 text-sm">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">旅程名稱 *</label>
+        <input id="ntTitle" required type="text" placeholder="例：京都賞楓五日遊、雪山主東峰" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">主要分類</label>
+          <select id="ntCategory" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="domestic">🇹🇼 國內旅遊</option>
+            <option value="international">✈️ 國外旅遊</option>
+            <option value="hiking">⛰️ 登山 / 健行</option>
+          </select>
+        </div>
+        <div id="ntModeWrap">
+          <label class="block text-xs font-semibold text-slate-600 mb-1">旅遊型態</label>
+          <select id="ntMode" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="free">自由行</option>
+            <option value="group">跟團</option>
+          </select>
+        </div>
+        <div id="ntHikingRegionWrap" class="hidden">
+          <label class="block text-xs font-semibold text-slate-600 mb-1">登山區域（均為跟團）</label>
+          <select id="ntHikingRegion" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+            <option value="domestic">國內（僅台幣）</option>
+            <option value="international">國外（多幣別）</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">出發日期</label>
+          <input id="ntStart" type="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">回程日期</label>
+          <input id="ntEnd" type="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">主要地點</label>
+        <input id="ntLocation" type="text" placeholder="例：花蓮台東、日本關西、南投玉山" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">旅伴</label>
+        <input id="ntCompanions" type="text" placeholder="例：家人、小明、山友團" class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+      <div class="pt-2 flex justify-end gap-2">
+        <button id="btnCancelNewTrip" type="button" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg font-medium">取消</button>
+        <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold">建立並進入規劃</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== 雲端 / 匯出入 / API 設定彈窗 ==================== -->
+<div id="settingsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+    <div class="bg-slate-800 text-white px-5 py-3.5 flex items-center justify-between">
+      <h3 class="font-bold text-base">☁️ 雲端同步、本機備份與 API 設定</h3>
+      <button id="btnCloseSettings" type="button" class="text-slate-300 hover:text-white">✕</button>
+    </div>
+    <div class="p-5 space-y-5 text-sm max-h-[80vh] overflow-y-auto custom-scroll">
+      <!-- 本機 JSON 備份 -->
+      <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+        <h4 class="font-bold text-slate-800">💾 本機 JSON 匯出 / 匯入（免設定）</h4>
+        <p class="text-xs text-slate-500">完整包含所有旅程文字、座標、多幣別與附件檔案，可隨時存檔備份或跨裝置還原。</p>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnExportJson" type="button" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg">⬇️ 匯出全部資料 (.json)</button>
+          <label class="px-3.5 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg cursor-pointer">
+            ⬆️ 匯入還原 (.json)
+            <input id="inputImportJson" type="file" accept=".json" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <!-- Google 雲端硬碟同步 -->
+      <div class="p-3.5 bg-sky-50 border border-sky-200 rounded-xl space-y-2.5">
+        <h4 class="font-bold text-sky-900">☁️ Google 雲端硬碟同步 (OAuth 2.0)</h4>
+        <p class="text-xs text-sky-800">填入您的 Google Cloud OAuth 用戶端 ID（需啟用 Google Drive API 並將目前網址加入已授權 JavaScript 來源），即可直接匯出/匯入雲端檔案 <code class="bg-white px-1 rounded">travel_planner_backup.json</code>。</p>
+        <input id="cfgGoogleClientId" type="text" placeholder="Google OAuth Client ID (例: xxxx.apps.googleusercontent.com)" class="w-full px-3 py-1.5 text-xs border border-sky-300 rounded-lg bg-white" />
+        <div class="flex flex-wrap gap-2">
+          <button id="btnDriveUpload" type="button" class="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg">⬆️ 匯出至 Google 雲端</button>
+          <button id="btnDriveDownload" type="button" class="px-3.5 py-2 bg-white border border-sky-400 hover:bg-sky-100 text-sky-800 text-xs font-semibold rounded-lg">⬇️ 從 Google 雲端匯入</button>
+        </div>
+        <div id="driveStatus" class="text-xs text-sky-700 font-medium"></div>
+      </div>
+
+      <!-- Google Maps API Key -->
+      <div class="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+        <h4 class="font-bold text-emerald-900">📍 Google Maps Places API（選填）</h4>
+        <p class="text-xs text-emerald-800">未填寫時預設使用免費 OpenStreetMap / Photon 搜尋與 Google Maps 網址座標解析；若填寫 API Key（需啟用 Places API），將自動啟用原生 Google 地點自動完成。</p>
+        <input id="cfgGoogleMapsKey" type="text" placeholder="Google Maps API Key (選填)" class="w-full px-3 py-1.5 text-xs border border-emerald-300 rounded-lg bg-white" />
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button id="btnSaveSettings" type="button" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg">儲存設定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Toast 提示 ==================== -->
+<div id="toast" class="hidden fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-medium z-[9999]"></div>
+
+<script>
+(() => {
+  /* ==================== 常數與預設資料 ==================== */
+  const DB_NAME = 'TravelPlannerDB_v2';
+  const STORE_NAME = 'trips';
+  const SETTINGS_KEY = 'travel_planner_settings_v2';
+
+  const DEFAULT_CURRENCIES = [
+    { code: 'TWD', name: '新台幣', symbol: 'NT$', rate: 1 },
+    { code: 'USD', name: '美金', symbol: '$', rate: 32.5 },
+    { code: 'JPY', name: '日圓', symbol: '¥', rate: 0.215 },
+    { code: 'CNY', name: '人民幣', symbol: '¥', rate: 4.5 },
+    { code: 'EUR', name: '歐元', symbol: '€', rate: 34.8 },
+    { code: 'HKD', name: '港幣', symbol: 'HK$', rate: 4.18 },
+    { code: 'KRW', name: '韓元', symbol: '₩', rate: 0.0235 }
+  ];
+
+  const ATTRACTION_CATS = ['風景區','網拍點','博物館','寺廟','古蹟(歷史建築)','夜市','步道','玩水地點','其他'];
+  const TRANSPORT_TYPES = ['飛機/船','高鐵','台鐵','客運','租汽(機)車','捷運/公車','公共腳踏車','步行','其他'];
+
+  const state = {
+    trips: [],
+    currentTripId: null,
+    portalTab: 'all',
+    portalQuery: '',
+    settings: { googleClientId: '', googleMapsKey: '' },
+    map: null,
+    markersLayer: null,
+    tempMarker: null,
+    tempPlace: null,
+    targetLock: null, // { listKey, itemId, label }
+    googlePlacesLoaded: false,
+    mobileShowMap: false,
+    driveToken: null
+  };
+
+  /* ==================== 工具函式 ==================== */
+  const uid = () => 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+  const fmtMoney = (n) => Math.round(num(n)).toLocaleString('zh-TW');
+
+  function showToast(msg, ms = 2600) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.add('hidden'), ms);
+  }
+
+  function calcDays(start, end) {
+    if (!start || !end) return '';
+    const d1 = new Date(start), d2 = new Date(end);
+    const diff = Math.round((d2 - d1) / 86400000) + 1;
+    return diff > 0 ? `${diff} 天` : '';
+  }
+
+  function isMultiCurrencyTrip(trip) {
+    return trip.category === 'international' || (trip.category === 'hiking' && trip.hikingRegion === 'international');
+  }
+
+  function isGroupTrip(trip) {
+    return trip.category === 'hiking' || trip.mode === 'group';
+  }
+
+  function calcTripTotalTWD(trip) {
+    let total = 0;
+    (trip.transports || []).forEach(t => total += num(t.fare) + num(t.rentFee));
+    (trip.attractions || []).forEach(a => { if (a.hasTicket) total += num(a.ticketPrice); });
+    (trip.restaurants || []).forEach(r => total += num(r.budget));
+    (trip.accommodations || []).forEach(h => total += num(h.budget));
+    (trip.souvenirs || []).forEach(s => total += num(s.budget));
+    if (isMultiCurrencyTrip(trip)) {
+      const exTotal = (trip.exchanges || []).reduce((acc, e) => acc + num(e.amount) * num(e.rate), 0);
+      if (exTotal > 0) return exTotal;
+    }
+    return total;
+  }
+
+  function readFilesAsBase64(fileList) {
+    return Promise.all(Array.from(fileList).map(file => new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res({ id: uid(), name: file.name, type: file.type, size: file.size, data: reader.result });
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    })));
+  }
+
+  /* ==================== IndexedDB 儲存 ==================== */
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function dbGetAll() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function dbPut(trip) {
+    trip.updatedAt = Date.now();
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(trip);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function dbDelete(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function dbReplaceAll(trips) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      store.clear();
+      trips.forEach(t => store.put(t));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  /* ==================== 示範資料 ==================== */
+  function createSampleTrips() {
+    return [
+      {
+        id: uid(), title: '花東縱谷慢旅', category: 'domestic', mode: 'free', hikingRegion: 'domestic',
+        startDate: '2026-12-05', endDate: '2026-12-07', location: '花蓮・台東池上', companions: '家人',
+        itineraryFiles: [],
+        transports: [
+          { id: uid(), type: '台鐵', date: '2026-12-05', trainNo: '408 自強3000', depTime: '07:40', arrTime: '09:50', depStation: '台北', arrStation: '花蓮', fare: 440, notes: '提前訂海側座位', files: [] },
+          { id: uid(), type: '租汽(機)車', date: '2026-12-05', vehicleType: '汽車', rentalShop: '格上花蓮站前店', rentFee: 3600, startTime: '10:00', endTime: '18:00', notes: '保乙式險', files: [] }
+        ],
+        attractions: [
+          { id: uid(), name: '伯朗大道', category: '風景區', customCategory: '', address: '台東縣池上鄉錦新三號道路', lat: 23.0972, lng: 121.2206, desc: '金黃稻田與天堂路單車漫遊', hasTicket: false, ticketPrice: 0 }
+        ],
+        restaurants: [
+          { id: uid(), name: '池上飯包文化故事館', address: '台東縣池上鄉忠孝路259號', lat: 23.1243, lng: 121.2194, desc: '古早味木片便當與懷舊火車車廂', budget: 350 }
+        ],
+        accommodations: [
+          { id: uid(), name: '日暉國際渡假村', address: '台東縣池上鄉新興街107號', lat: 23.1211, lng: 121.2289, checkIn: '2026-12-05T15:00', checkOut: '2026-12-06T11:00', budget: 5800, breakfast: true, parking: true, facilities: '溫泉泳池、免費腳踏車' }
+        ],
+        souvenirs: [
+          { id: uid(), name: '池上鄉農會大地飯店', address: '台東縣池上鄉新興村7鄰85-6號', lat: 23.1185, lng: 121.2121, desc: '池上冠軍米、米乖乖', budget: 800 }
+        ],
+        currencies: JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)),
+        exchanges: [],
+        reminders: [{ id: uid(), text: '攜帶駕照正本與太陽眼鏡', done: false }],
+        memo: '縱谷線加油站較少，油量低於一半就先加滿。',
+        updatedAt: Date.now()
+      },
+      {
+        id: uid(), title: '日本關西秋日行', category: 'international', mode: 'free', hikingRegion: 'international',
+        startDate: '2026-11-28', endDate: '2026-12-02', location: '日本・大阪・京都', companions: '好友 3 人',
+        itineraryFiles: [],
+        transports: [
+          { id: uid(), type: '飛機/船', date: '2026-11-28', depTime: '08:30', arrTime: '12:00', depCountry: '台灣', depCity: '高雄', depAirport: 'KHH 小港', arrCountry: '日本', arrCity: '大阪', arrAirport: 'KIX 關西', carrier: '長榮航空', flightNo: 'BR182', bookingCode: 'EV8K9X', duration: '2h 30m', fare: 13500, notes: '含23kg托運', files: [] }
+        ],
+        attractions: [
+          { id: uid(), name: '清水寺', category: '寺廟', customCategory: '', address: '日本京都府京都市東山區清水1-294', lat: 34.9949, lng: 135.7850, desc: '世界文化遺產，秋季夜楓必訪', hasTicket: true, ticketPrice: 110 }
+        ],
+        restaurants: [
+          { id: uid(), name: '錦市場小吃巡禮', address: '京都府京都市中京區錦小路通', lat: 35.0050, lng: 135.7649, desc: '玉子燒、豆乳甜甜圈、抹茶甜點', budget: 1200 }
+        ],
+        accommodations: [
+          { id: uid(), name: '京都格蘭比亞大酒店', address: '京都府京都市下京區烏丸通塩小路下ル', lat: 34.9858, lng: 135.7588, checkIn: '2026-11-28T15:00', checkOut: '2026-12-01T11:00', budget: 18500, breakfast: true, parking: false, facilities: '直結京都車站、健身房' }
+        ],
+        souvenirs: [
+          { id: uid(), name: '京都車站伊勢丹 B1', address: '京都府京都市下京區東塩小路町', lat: 34.9854, lng: 135.7579, desc: '北山茶之菓、宇治抹茶粉', budget: 3000 }
+        ],
+        currencies: JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)),
+        exchanges: [
+          { id: uid(), date: '2026-11-10', code: 'JPY', amount: 120000, rate: 0.214, note: '網銀線上結匯' },
+          { id: uid(), date: '2026-11-15', code: 'TWD', amount: 15000, rate: 1, note: '刷卡與機票預算' }
+        ],
+        reminders: [{ id: uid(), text: '確認護照效期超過 6 個月 & 填寫 Visit Japan Web', done: false }],
+        memo: '下載 Suica / ICOCA 至手機錢包，方便搭地鐵與公車。',
+        updatedAt: Date.now() - 1000
+      },
+      {
+        id: uid(), title: '玉山主峰兩天兩夜', category: 'hiking', mode: 'group', hikingRegion: 'domestic',
+        startDate: '2026-12-18', endDate: '2026-12-20', location: '南投信義・排雲山莊・玉山主峰', companions: '野訊登山隊',
+        itineraryFiles: [],
+        transports: [
+          { id: uid(), type: '客運', date: '2026-12-18', trainNo: '登山接駁專車', depTime: '19:30', arrTime: '22:30', depStation: '台中高鐵站', arrStation: '東埔山莊', fare: 1800, notes: '集合於 6 號出口', files: [] }
+        ],
+        attractions: [
+          { id: uid(), name: '玉山主峰 (3952m)', category: '步道', customCategory: '', address: '玉山國家公園', lat: 23.4700, lng: 120.9573, desc: '東北亞第一高峰，看日出雲海', hasTicket: false, ticketPrice: 0 }
+        ],
+        restaurants: [
+          { id: uid(), name: '排雲山莊供餐', address: '玉山步道 8.5K', lat: 23.4659, lng: 120.9502, desc: '高山熱食早晚餐（含於團費）', budget: 800 }
+        ],
+        accommodations: [
+          { id: uid(), name: '排雲山莊', address: '海拔 3402m', lat: 23.4659, lng: 120.9502, checkIn: '2026-12-19T15:30', checkOut: '2026-12-20T03:00', budget: 480, breakfast: true, parking: false, facilities: '睡袋租借、供熱水' }
+        ],
+        souvenirs: [],
+        currencies: JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)),
+        exchanges: [],
+        reminders: [
+          { id: uid(), text: '攜帶身分證正本（塔塔加檢查站核對）', done: false },
+          { id: uid(), text: '頭燈備用電池、兩截式雨衣、保暖中層與手套', done: false }
+        ],
+        memo: '出發前兩週調整作息並備妥高山症預防藥物。',
+        updatedAt: Date.now() - 2000
+      }
+    ];
+  }
+
+  /* ==================== 入口總覽頁渲染 ==================== */
+  function renderPortal() {
+    const q = state.portalQuery.trim().toLowerCase();
+    const filtered = state.trips.filter(t => {
+      if (state.portalTab !== 'all' && t.category !== state.portalTab) return false;
+      if (!q) return true;
+      return [t.title, t.location, t.companions].some(v => (v || '').toLowerCase().includes(q));
+    }).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+    // 統計卡片
+    const counts = {
+      all: state.trips.length,
+      domestic: state.trips.filter(t => t.category === 'domestic').length,
+      international: state.trips.filter(t => t.category === 'international').length,
+      hiking: state.trips.filter(t => t.category === 'hiking').length
+    };
+    document.getElementById('portalStats').innerHTML = `
+      <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-xs"><div class="text-[11px] text-slate-500">總旅程數</div><div class="text-xl font-extrabold text-slate-800">${counts.all}</div></div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-xs"><div class="text-[11px] text-emerald-600">🇹🇼 國內旅遊</div><div class="text-xl font-extrabold text-emerald-700">${counts.domestic}</div></div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-xs"><div class="text-[11px] text-sky-600">✈️ 國外旅遊</div><div class="text-xl font-extrabold text-sky-700">${counts.international}</div></div>
+      <div class="bg-white rounded-xl p-3 border border-slate-200 shadow-xs"><div class="text-[11px] text-amber-600">⛰️ 登山/健行</div><div class="text-xl font-extrabold text-amber-700">${counts.hiking}</div></div>
+    `;
+
+    // 頁籤樣式
+    document.querySelectorAll('.portal-tab').forEach(btn => {
+      const active = btn.dataset.tab === state.portalTab;
+      btn.className = active
+        ? 'portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-teal-600 text-white shadow-sm'
+        : 'portal-tab px-4 py-1.5 rounded-full text-sm font-semibold bg-white text-slate-600 hover:bg-slate-200 border border-slate-200';
+    });
+
+    const groups = [
+      { key: 'domestic', title: '🇹🇼 國內旅遊', accent: 'border-emerald-500', btnCls: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200' },
+      { key: 'international', title: '✈️ 國外旅遊', accent: 'border-sky-500', btnCls: 'bg-sky-50 text-sky-700 hover:bg-sky-100 border-sky-200' },
+      { key: 'hiking', title: '⛰️ 登山 / 健行', accent: 'border-amber-500', btnCls: 'bg-amber-50 text-amber-800 hover:bg-amber-100 border-amber-200' }
+    ].filter(g => state.portalTab === 'all' || state.portalTab === g.key);
+
+    const container = document.getElementById('portalTripSections');
+    container.innerHTML = groups.map(g => {
+      const list = filtered.filter(t => t.category === g.key);
+      const cardsHtml = list.length ? list.map(t => {
+        const days = calcDays(t.startDate, t.endDate);
+        const totalBudget = calcTripTotalTWD(t);
+        const modeBadge = t.category === 'hiking'
+          ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800">${t.hikingRegion === 'international' ? '國外跟團' : '國內跟團'}</span>`
+          : `<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${t.mode === 'group' ? 'bg-purple-100 text-purple-800' : 'bg-teal-100 text-teal-800'}">${t.mode === 'group' ? '跟團' : '自由行'}</span>`;
+        return `
+          <div data-open-trip="${t.id}" class="trip-card group bg-white rounded-2xl border border-slate-200 hover:border-teal-400 hover:shadow-lg transition p-4 cursor-pointer flex flex-col justify-between gap-3">
+            <div class="space-y-2">
+              <div class="flex items-start justify-between gap-2">
+                <h3 class="font-bold text-base text-slate-800 group-hover:text-teal-700 leading-snug">${esc(t.title)}</h3>
+                ${modeBadge}
+              </div>
+              <div class="text-xs text-slate-500 space-y-1">
+                <div>📅 ${esc(t.startDate || '未定')} ~ ${esc(t.endDate || '未定')} ${days ? `<span class="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded font-medium">${days}</span>` : ''}</div>
+                <div>📍 ${esc(t.location || '未填寫地點')}</div>
+                <div>👥 ${esc(t.companions || '未填寫旅伴')}</div>
+              </div>
+            </div>
+            <div class="pt-3 border-t border-slate-100 space-y-2">
+              <div class="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                <span class="px-1.5 py-0.5 bg-slate-100 rounded">🚄 交通 ${(t.transports||[]).length}</span>
+                <span class="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded">🏞️ 景點 ${(t.attractions||[]).length}</span>
+                <span class="px-1.5 py-0.5 bg-orange-50 text-orange-700 rounded">🍜 餐廳 ${(t.restaurants||[]).length}</span>
+                <span class="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded">🏨 住宿 ${(t.accommodations||[]).length}</span>
+                <span class="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 rounded">🎁 伴手禮 ${(t.souvenirs||[]).length}</span>
+              </div>
+              <div class="flex items-center justify-between pt-1">
+                <span class="text-xs font-bold text-slate-700">預算約 NT$ ${fmtMoney(totalBudget)}</span>
+                <div class="flex items-center gap-1">
+                  <button data-dup-trip="${t.id}" type="button" title="複製旅程" class="px-2 py-1 text-[11px] bg-slate-100 hover:bg-sky-100 hover:text-sky-700 rounded">複製</button>
+                  <button data-del-trip="${t.id}" type="button" title="刪除旅程" class="px-2 py-1 text-[11px] bg-slate-100 hover:bg-rose-100 hover:text-rose-700 rounded">刪除</button>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }).join('') : `<div class="col-span-full bg-white/70 border border-dashed border-slate-300 rounded-2xl p-6 text-center text-sm text-slate-400">尚無符合條件的旅程，點擊右上角新增一筆吧！</div>`;
+
+      return `
+        <section class="space-y-3">
+          <div class="flex items-center justify-between border-l-4 ${g.accent} pl-3">
+            <h2 class="text-lg font-bold text-slate-800">${g.title} <span class="text-xs font-normal text-slate-500">(${list.length})</span></h2>
+            <button data-quick-add="${g.key}" type="button" class="px-3 py-1 text-xs font-semibold rounded-lg border ${g.btnCls}">＋ 新增此分類旅程</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cardsHtml}</div>
+        </section>`;
+    }).join('');
+  }
+
+  /* ==================== 視圖切換 ==================== */
+  function openTripPlanner(tripId) {
+    const trip = state.trips.find(t => t.id === tripId);
+    if (!trip) return;
+    state.currentTripId = tripId;
+    state.targetLock = null;
+    state.mobileShowMap = false;
+    document.getElementById('portalView').classList.add('hidden');
+    document.getElementById('plannerView').classList.remove('hidden');
+    updateMobilePane();
+    renderPlanner();
+    initMapIfNeeded();
+    setTimeout(() => {
+      if (state.map) {
+        state.map.invalidateSize();
+        refreshMapMarkers();
+        fitMapToMarkers();
+      }
+    }, 120);
+  }
+
+  function backToPortal() {
+    state.currentTripId = null;
+    cancelTargetLock();
+    clearTempPin();
+    document.getElementById('plannerView').classList.add('hidden');
+    document.getElementById('portalView').classList.remove('hidden');
+    renderPortal();
+  }
+
+  function getCurrentTrip() {
+    return state.trips.find(t => t.id === state.currentTripId);
+  }
+
+  async function saveCurrentTrip(rerenderMap = false) {
+    const trip = getCurrentTrip();
+    if (!trip) return;
+    await dbPut(trip);
+    updatePlannerHeader(trip);
+    if (rerenderMap) refreshMapMarkers();
+  }
+
+  function updateMobilePane() {
+    const left = document.getElementById('plannerLeft');
+    const right = document.getElementById('plannerRight');
+    const btn = document.getElementById('btnMobileToggle');
+    if (window.innerWidth >= 1024) {
+      left.classList.remove('hidden');
+      right.classList.remove('hidden');
+      right.classList.add('flex');
+      return;
+    }
+    if (state.mobileShowMap) {
+      left.classList.add('hidden');
+      right.classList.remove('hidden');
+      right.classList.add('flex');
+      btn.textContent = '📝 返回表單';
+      setTimeout(() => state.map && state.map.invalidateSize(), 100);
+    } else {
+      left.classList.remove('hidden');
+      right.classList.add('hidden');
+      right.classList.remove('flex');
+      btn.textContent = '🗺️ 切換地圖';
+    }
+  }
+
+  /* ==================== 詳細頁渲染 (8 大折疊模組) ==================== */
+  function updatePlannerHeader(trip) {
+    document.getElementById('plannerTitle').textContent = trip.title || '未命名旅程';
+    const catMap = { domestic: '🇹🇼 國內', international: '✈️ 國外', hiking: '⛰️ 登山/健行' };
+    const subText = trip.category === 'hiking'
+      ? (trip.hikingRegion === 'international' ? '國外跟團' : '國內跟團')
+      : (trip.mode === 'group' ? '跟團' : '自由行');
+    document.getElementById('plannerBadges').innerHTML = `
+      <span class="px-2 py-0.5 rounded text-[11px] bg-teal-700 text-teal-100">${catMap[trip.category]}</span>
+      <span class="px-2 py-0.5 rounded text-[11px] bg-slate-700 text-slate-200">${subText}</span>`;
+  }
+
+  function accordionShell(key, icon, title, countText, bodyHtml, openDefault = false) {
+    return `
+      <div class="accordion-item bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden ${openDefault ? 'open' : ''}" data-acc="${key}">
+        <button type="button" class="accordion-header w-full px-4 py-3 flex items-center justify-between bg-white hover:bg-slate-50 transition text-left">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">${icon}</span>
+            <span class="font-bold text-sm sm:text-base text-slate-800">${title}</span>
+            ${countText ? `<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs font-semibold">${countText}</span>` : ''}
+          </div>
+          <span class="accordion-arrow text-slate-400 transition-transform duration-200">▼</span>
+        </button>
+        <div class="accordion-content border-t border-slate-100 p-3.5 sm:p-4 bg-slate-50/50 space-y-3">
+          ${bodyHtml}
+        </div>
+      </div>`;
+  }
+
+  function renderFileChips(files, ownerType, itemId = '') {
+    if (!files || !files.length) return '';
+    return `<div class="flex flex-wrap gap-1.5 pt-1">` + files.map(f => `
+      <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs">
+        <a href="${f.data}" download="${esc(f.name)}" class="text-teal-700 hover:underline max-w-[160px] truncate" title="${esc(f.name)}">📎 ${esc(f.name)}</a>
+        <button type="button" onclick="window._delFile('${ownerType}','${itemId}','${f.id}')" class="text-rose-500 hover:text-rose-700 font-bold">×</button>
+      </span>`).join('') + `</div>`;
+  }
+
+  function renderPlaceMapBar(listKey, item) {
+    const hasCoord = item.lat != null && item.lng != null && item.lat !== '' && item.lng !== '';
+    const coordStr = hasCoord ? `${Number(item.lat).toFixed(5)}, ${Number(item.lng).toFixed(5)}` : '尚未設定座標';
+    const gmapUrl = hasCoord
+      ? `https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name || item.address || '')}`;
+    return `
+      <div class="flex flex-wrap items-center justify-between gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-lg text-[11px]">
+        <span class="font-mono ${hasCoord ? 'text-teal-700 font-semibold' : 'text-slate-400'}">📍 ${coordStr}</span>
+        <div class="flex flex-wrap items-center gap-1">
+          <button type="button" onclick="window._lockTarget('${listKey}','${item.id}',true)" class="px-2 py-0.5 bg-white border border-slate-300 hover:bg-teal-50 rounded text-slate-700">🔍 搜尋/定位</button>
+          <button type="button" onclick="window._lockTarget('${listKey}','${item.id}',false)" class="px-2 py-0.5 bg-white border border-slate-300 hover:bg-amber-50 rounded text-slate-700">🎯 地圖選點</button>
+          ${hasCoord ? `<button type="button" onclick="window._panTo(${item.lat},${item.lng})" class="px-2 py-0.5 bg-white border border-slate-300 hover:bg-sky-50 rounded text-sky-700">聚焦</button>` : ''}
+          <a href="${gmapUrl}" target="_blank" rel="noopener" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded">導航</a>
+        </div>
+      </div>`;
+  }
+
+  function renderTransportFields(t) {
+    const id = t.id;
+    const inp = (field, label, val, type = 'text', extra = '') => `
+      <div>
+        <label class="block text-[11px] text-slate-500 mb-0.5">${label}</label>
+        <input type="${type}" value="${esc(val)}" ${extra} onchange="window._updItem('transports','${id}','${field}',this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded bg-white" />
+      </div>`;
+    if (t.type === '飛機/船') {
+      return `
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          ${inp('date','日期',t.date,'date')}
+          ${inp('depTime','出發時間',t.depTime,'time')}
+          ${inp('arrTime','抵達時間',t.arrTime,'time')}
+          ${inp('depCountry','出發國家',t.depCountry)}
+          ${inp('depCity','出發城市',t.depCity)}
+          ${inp('depAirport','出發機場/港口',t.depAirport)}
+          ${inp('arrCountry','抵達國家',t.arrCountry)}
+          ${inp('arrCity','抵達城市',t.arrCity)}
+          ${inp('arrAirport','抵達機場/港口',t.arrAirport)}
+          ${inp('carrier','航空公司/船公司',t.carrier)}
+          ${inp('flightNo','航/船班號',t.flightNo)}
+          <div>
+            <label class="block text-[11px] text-indigo-700 font-semibold mb-0.5">訂位代號 (PNR)</label>
+            <input type="text" value="${esc(t.bookingCode)}" placeholder="例: EV8K9X" oninput="this.value=this.value.toUpperCase()" onchange="window._updItem('transports','${id}','bookingCode',this.value.toUpperCase(),true)" class="w-full px-2 py-1 text-xs font-mono font-bold uppercase border border-indigo-300 rounded bg-indigo-50/40" />
+          </div>
+          ${inp('duration','航程時間',t.duration,'text','placeholder="例: 2h 30m"')}
+          ${inp('fare','票價 (NT$)',t.fare,'number')}
+        </div>`;
+    }
+    if (['高鐵','台鐵','客運'].includes(t.type)) {
+      return `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        ${inp('date','出發日期',t.date,'date')}
+        ${inp('trainNo','班次',t.trainNo)}
+        ${inp('depTime','出發時間',t.depTime,'time')}
+        ${inp('arrTime','抵達時間',t.arrTime,'time')}
+        ${inp('depStation','出發站',t.depStation)}
+        ${inp('arrStation','抵達站',t.arrStation)}
+        ${inp('fare','票價 (NT$)',t.fare,'number')}
+      </div>`;
+    }
+    if (t.type === '租汽(機)車') {
+      return `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        ${inp('date','日期',t.date,'date')}
+        <div>
+          <label class="block text-[11px] text-slate-500 mb-0.5">車種</label>
+          <div class="flex items-center gap-3 py-1 text-xs">
+            <label class="flex items-center gap-1"><input type="radio" name="veh_${id}" value="汽車" ${t.vehicleType!=='機車'?'checked':''} onchange="window._updItem('transports','${id}','vehicleType','汽車')">汽車</label>
+            <label class="flex items-center gap-1"><input type="radio" name="veh_${id}" value="機車" ${t.vehicleType==='機車'?'checked':''} onchange="window._updItem('transports','${id}','vehicleType','機車')">機車</label>
+          </div>
+        </div>
+        ${inp('rentalShop','租車行',t.rentalShop)}
+        ${inp('rentFee','租車費用 (NT$)',t.rentFee,'number')}
+        ${inp('startTime','租車開始時間',t.startTime,'time')}
+        ${inp('endTime','還車結束時間',t.endTime,'time')}
+      </div>`;
+    }
+    if (t.type === '捷運/公車') {
+      return `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        ${inp('date','日期',t.date,'date')}
+        ${inp('lineName','捷運名稱/公車號次',t.lineName)}
+        ${inp('depStation','起站',t.depStation)}
+        ${inp('arrStation','訖站',t.arrStation)}
+        ${inp('fare','票價 (選填)',t.fare,'number')}
+      </div>`;
+    }
+    if (t.type === '公共腳踏車') {
+      return `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        ${inp('date','日期',t.date,'date')}
+        ${inp('depStation','租借站',t.depStation)}
+        ${inp('depTime','租借時間',t.depTime,'time')}
+        ${inp('arrStation','還車站',t.arrStation)}
+        ${inp('arrTime','還車時間',t.arrTime,'time')}
+      </div>`;
+    }
+    if (t.type === '步行') {
+      return `<div class="grid grid-cols-2 gap-2">
+        ${inp('date','日期',t.date,'date')}
+        ${inp('depStation','起訖路線',t.depStation)}
+      </div>`;
+    }
+    return `<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      ${inp('customType','自訂交通方式',t.customType)}
+      ${inp('date','日期',t.date,'date')}
+      ${inp('fare','費用 (NT$)',t.fare,'number')}
+    </div>`;
+  }
+
+  function renderPlanner() {
+    const trip = getCurrentTrip();
+    if (!trip) return;
+    updatePlannerHeader(trip);
+
+    // 保留目前展開的折疊狀態
+    const openKeys = new Set(Array.from(document.querySelectorAll('.accordion-item.open')).map(el => el.dataset.acc));
+    const isFirstRender = document.getElementById('accordionContainer').children.length === 0;
+    const isOpen = (k, def = false) => isFirstRender ? def : openKeys.has(k);
+
+    // 1. 綜合資料
+    const generalHtml = `
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div class="sm:col-span-2">
+          <label class="block font-semibold text-slate-600 mb-1">旅程名稱</label>
+          <input type="text" value="${esc(trip.title)}" onchange="window._updTrip('title',this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">主分類</label>
+          <select onchange="window._updTrip('category',this.value,true)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white">
+            <option value="domestic" ${trip.category==='domestic'?'selected':''}>🇹🇼 國內旅遊</option>
+            <option value="international" ${trip.category==='international'?'selected':''}>✈️ 國外旅遊</option>
+            <option value="hiking" ${trip.category==='hiking'?'selected':''}>⛰️ 登山 / 健行</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">${trip.category==='hiking'?'登山區域（跟團）':'旅遊型態'}</label>
+          ${trip.category==='hiking'
+            ? `<select onchange="window._updTrip('hikingRegion',this.value,true)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white">
+                 <option value="domestic" ${trip.hikingRegion!=='international'?'selected':''}>國內（僅台幣）</option>
+                 <option value="international" ${trip.hikingRegion==='international'?'selected':''}>國外（多幣別）</option>
+               </select>`
+            : `<select onchange="window._updTrip('mode',this.value,true)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white">
+                 <option value="free" ${trip.mode!=='group'?'selected':''}>自由行</option>
+                 <option value="group" ${trip.mode==='group'?'selected':''}>跟團</option>
+               </select>`}
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">出發日期</label>
+          <input type="date" value="${esc(trip.startDate)}" onchange="window._updTrip('startDate',this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">回程日期</label>
+          <input type="date" value="${esc(trip.endDate)}" onchange="window._updTrip('endDate',this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">地點</label>
+          <input type="text" value="${esc(trip.location)}" onchange="window._updTrip('location',this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white" />
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">旅伴</label>
+          <input type="text" value="${esc(trip.companions)}" onchange="window._updTrip('companions',this.value)" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white" />
+        </div>
+        ${isGroupTrip(trip) ? `
+          <div class="sm:col-span-2 p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-amber-900">📄 跟團行程檔案上傳</span>
+              <label class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer font-semibold">
+                ＋ 上傳檔案
+                <input type="file" multiple class="hidden" onchange="window._uploadFile('itinerary','',this.files)" />
+              </label>
+            </div>
+            ${renderFileChips(trip.itineraryFiles, 'itinerary')}
+          </div>` : ''}
+      </div>`;
+
+    // 2. 交通
+    const transportsHtml = `
+      <div class="flex justify-end">
+        <button type="button" onclick="window._addItem('transports')" class="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold rounded-lg">＋ 新增交通段點</button>
+      </div>
+      <div class="space-y-3">
+        ${(trip.transports || []).map((t, idx) => `
+          <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 shadow-2xs">
+            <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold text-slate-400">#${idx + 1}</span>
+                <select onchange="window._updItem('transports','${t.id}','type',this.value,true)" class="px-2 py-1 text-xs font-bold border border-slate-300 rounded-lg bg-slate-50">
+                  ${TRANSPORT_TYPES.map(tp => `<option value="${tp}" ${t.type===tp?'selected':''}>${tp}</option>`).join('')}
+                </select>
+                ${t.type==='飛機/船' && t.bookingCode ? `<span class="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-mono text-xs font-bold rounded">訂位代號: ${esc(t.bookingCode)}</span>` : ''}
+              </div>
+              <div class="flex items-center gap-1 text-xs">
+                <button type="button" onclick="window._moveItem('transports',${idx},-1)" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 rounded" title="上移">↑</button>
+                <button type="button" onclick="window._moveItem('transports',${idx},1)" class="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 rounded" title="下移">↓</button>
+                <button type="button" onclick="window._delItem('transports','${t.id}')" class="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded">刪除</button>
+              </div>
+            </div>
+            ${renderTransportFields(t)}
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-0.5">文字說明 / 備註</label>
+              <input type="text" value="${esc(t.notes)}" placeholder="輸入搭乘注意事項、轉乘資訊..." onchange="window._updItem('transports','${t.id}','notes',this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded" />
+            </div>
+            <div class="flex items-center justify-between flex-wrap gap-2 pt-1">
+              <label class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg cursor-pointer">
+                📎 上傳車票 / 交通檔案
+                <input type="file" multiple class="hidden" onchange="window._uploadFile('transport','${t.id}',this.files)" />
+              </label>
+            </div>
+            ${renderFileChips(t.files, 'transport', t.id)}
+          </div>`).join('') || '<p class="text-xs text-slate-400 text-center py-3">尚未新增交通資訊</p>'}
+      </div>`;
+
+    // 3. 景點/地點
+    const attractionsHtml = `
+      <div class="flex justify-end">
+        <button type="button" onclick="window._addItem('attractions')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg">＋ 新增景點/地點</button>
+      </div>
+      <div class="space-y-3">
+        ${(trip.attractions || []).map(a => `
+          <div class="bg-white border-l-4 border-blue-500 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <input type="text" value="${esc(a.name)}" placeholder="景點名稱" onchange="window._updItem('attractions','${a.id}','name',this.value,false,true)" class="flex-1 font-bold text-sm px-2 py-1 border border-slate-300 rounded" />
+              <button type="button" onclick="window._delItem('attractions','${a.id}')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded">刪除</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-0.5">景點分類</label>
+                <select onchange="window._updItem('attractions','${a.id}','category',this.value,true)" class="w-full px-2 py-1 border border-slate-300 rounded bg-white">
+                  ${ATTRACTION_CATS.map(c => `<option value="${c}" ${a.category===c?'selected':''}>${c}</option>`).join('')}
+                </select>
+              </div>
+              ${a.category==='其他' ? `<div><label class="block text-[11px] text-slate-500 mb-0.5">自訂分類</label><input type="text" value="${esc(a.customCategory)}" onchange="window._updItem('attractions','${a.id}','customCategory',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>` : ''}
+              <div class="${a.category==='其他'?'sm:col-span-2':''}">
+                <label class="block text-[11px] text-slate-500 mb-0.5">地址 / 位置</label>
+                <input type="text" value="${esc(a.address)}" onchange="window._updItem('attractions','${a.id}','address',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" />
+              </div>
+            </div>
+            ${renderPlaceMapBar('attractions', a)}
+            <div>
+              <label class="block text-[11px] text-slate-500 mb-0.5">景點介紹</label>
+              <textarea rows="2" onchange="window._updItem('attractions','${a.id}','desc',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded">${esc(a.desc)}</textarea>
+            </div>
+            <div class="flex flex-wrap items-center gap-3 pt-1">
+              <label class="flex items-center gap-1.5 font-semibold text-slate-700">
+                <input type="checkbox" ${a.hasTicket?'checked':''} onchange="window._updItem('attractions','${a.id}','hasTicket',this.checked,true)" /> 需要門票
+              </label>
+              ${a.hasTicket ? `<div class="flex items-center gap-1.5"><span>門票金額 (NT$)</span><input type="number" value="${esc(a.ticketPrice)}" onchange="window._updItem('attractions','${a.id}','ticketPrice',this.value)" class="w-28 px-2 py-1 border border-slate-300 rounded" /></div>` : '<span class="text-emerald-600">免費 / 無門票</span>'}
+            </div>
+          </div>`).join('') || '<p class="text-xs text-slate-400 text-center py-3">尚未新增景點，也可直接從右側地圖搜尋加入</p>'}
+      </div>`;
+
+    // 4. 餐廳/小吃
+    const restaurantsHtml = `
+      <div class="flex justify-end">
+        <button type="button" onclick="window._addItem('restaurants')" class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold rounded-lg">＋ 新增餐廳/小吃</button>
+      </div>
+      <div class="space-y-3">
+        ${(trip.restaurants || []).map(r => `
+          <div class="bg-white border-l-4 border-orange-500 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <input type="text" value="${esc(r.name)}" placeholder="餐廳/小吃名稱" onchange="window._updItem('restaurants','${r.id}','name',this.value,false,true)" class="flex-1 font-bold text-sm px-2 py-1 border border-slate-300 rounded" />
+              <button type="button" onclick="window._delItem('restaurants','${r.id}')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded">刪除</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div class="sm:col-span-2"><label class="block text-[11px] text-slate-500 mb-0.5">地點 / 地址</label><input type="text" value="${esc(r.address)}" onchange="window._updItem('restaurants','${r.id}','address',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div><label class="block text-[11px] text-slate-500 mb-0.5">預算 (NT$)</label><input type="number" value="${esc(r.budget)}" onchange="window._updItem('restaurants','${r.id}','budget',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+            </div>
+            ${renderPlaceMapBar('restaurants', r)}
+            <div><label class="block text-[11px] text-slate-500 mb-0.5">特色介紹</label><textarea rows="2" onchange="window._updItem('restaurants','${r.id}','desc',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded">${esc(r.desc)}</textarea></div>
+          </div>`).join('') || '<p class="text-xs text-slate-400 text-center py-3">尚未新增餐廳或小吃</p>'}
+      </div>`;
+
+    // 5. 住宿
+    const accommodationsHtml = `
+      <div class="flex justify-end">
+        <button type="button" onclick="window._addItem('accommodations')" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg">＋ 新增住宿</button>
+      </div>
+      <div class="space-y-3">
+        ${(trip.accommodations || []).map(h => `
+          <div class="bg-white border-l-4 border-purple-600 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <input type="text" value="${esc(h.name)}" placeholder="飯店/民宿名稱" onchange="window._updItem('accommodations','${h.id}','name',this.value,false,true)" class="flex-1 font-bold text-sm px-2 py-1 border border-slate-300 rounded" />
+              <button type="button" onclick="window._delItem('accommodations','${h.id}')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded">刪除</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div class="sm:col-span-2"><label class="block text-[11px] text-slate-500 mb-0.5">住宿地點 / 地址</label><input type="text" value="${esc(h.address)}" onchange="window._updItem('accommodations','${h.id}','address',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div><label class="block text-[11px] text-slate-500 mb-0.5">入住日期時間</label><input type="datetime-local" value="${esc(h.checkIn)}" onchange="window._updItem('accommodations','${h.id}','checkIn',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div><label class="block text-[11px] text-slate-500 mb-0.5">退房日期時間</label><input type="datetime-local" value="${esc(h.checkOut)}" onchange="window._updItem('accommodations','${h.id}','checkOut',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div><label class="block text-[11px] text-slate-500 mb-0.5">預算 (NT$)</label><input type="number" value="${esc(h.budget)}" onchange="window._updItem('accommodations','${h.id}','budget',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div class="flex items-center gap-4 pt-4">
+                <label class="flex items-center gap-1"><input type="checkbox" ${h.breakfast?'checked':''} onchange="window._updItem('accommodations','${h.id}','breakfast',this.checked)" /> 含早餐</label>
+                <label class="flex items-center gap-1"><input type="checkbox" ${h.parking?'checked':''} onchange="window._updItem('accommodations','${h.id}','parking',this.checked)" /> 有停車場</label>
+              </div>
+              <div class="sm:col-span-2"><label class="block text-[11px] text-slate-500 mb-0.5">其他特殊設施</label><input type="text" value="${esc(h.facilities)}" placeholder="例：溫泉、泳池、接駁車、洗衣機" onchange="window._updItem('accommodations','${h.id}','facilities',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+            </div>
+            ${renderPlaceMapBar('accommodations', h)}
+          </div>`).join('') || '<p class="text-xs text-slate-400 text-center py-3">尚未新增住宿</p>'}
+      </div>`;
+
+    // 6. 伴手禮
+    const souvenirsHtml = `
+      <div class="flex justify-end">
+        <button type="button" onclick="window._addItem('souvenirs')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg">＋ 新增伴手禮</button>
+      </div>
+      <div class="space-y-3">
+        ${(trip.souvenirs || []).map(s => `
+          <div class="bg-white border-l-4 border-emerald-600 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <input type="text" value="${esc(s.name)}" placeholder="購買地點 / 店家名稱" onchange="window._updItem('souvenirs','${s.id}','name',this.value,false,true)" class="flex-1 font-bold text-sm px-2 py-1 border border-slate-300 rounded" />
+              <button type="button" onclick="window._delItem('souvenirs','${s.id}')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded">刪除</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div class="sm:col-span-2"><label class="block text-[11px] text-slate-500 mb-0.5">地址</label><input type="text" value="${esc(s.address)}" onchange="window._updItem('souvenirs','${s.id}','address',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+              <div><label class="block text-[11px] text-slate-500 mb-0.5">預算 (NT$)</label><input type="number" value="${esc(s.budget)}" onchange="window._updItem('souvenirs','${s.id}','budget',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded" /></div>
+            </div>
+            ${renderPlaceMapBar('souvenirs', s)}
+            <div><label class="block text-[11px] text-slate-500 mb-0.5">品項介紹</label><textarea rows="2" onchange="window._updItem('souvenirs','${s.id}','desc',this.value)" class="w-full px-2 py-1 border border-slate-300 rounded">${esc(s.desc)}</textarea></div>
+          </div>`).join('') || '<p class="text-xs text-slate-400 text-center py-3">尚未新增伴手禮</p>'}
+      </div>`;
+
+    // 7. 預算與多幣別換匯
+    const itemSumT = (trip.transports||[]).reduce((s,x)=>s+num(x.fare)+num(x.rentFee),0);
+    const itemSumA = (trip.attractions||[]).reduce((s,x)=>s+(x.hasTicket?num(x.ticketPrice):0),0);
+    const itemSumR = (trip.restaurants||[]).reduce((s,x)=>s+num(x.budget),0);
+    const itemSumH = (trip.accommodations||[]).reduce((s,x)=>s+num(x.budget),0);
+    const itemSumS = (trip.souvenirs||[]).reduce((s,x)=>s+num(x.budget),0);
+    const itemGrand = itemSumT + itemSumA + itemSumR + itemSumH + itemSumS;
+
+    let budgetHtml = `
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200"><div class="text-slate-500">交通小計</div><div class="font-bold">NT$ ${fmtMoney(itemSumT)}</div></div>
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200"><div class="text-slate-500">門票小計</div><div class="font-bold">NT$ ${fmtMoney(itemSumA)}</div></div>
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200"><div class="text-slate-500">餐飲小計</div><div class="font-bold">NT$ ${fmtMoney(itemSumR)}</div></div>
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200"><div class="text-slate-500">住宿小計</div><div class="font-bold">NT$ ${fmtMoney(itemSumH)}</div></div>
+        <div class="bg-white p-2.5 rounded-lg border border-slate-200"><div class="text-slate-500">伴手禮小計</div><div class="font-bold">NT$ ${fmtMoney(itemSumS)}</div></div>
+        <div class="bg-teal-50 p-2.5 rounded-lg border border-teal-300"><div class="text-teal-700 font-semibold">各項預算合計</div><div class="font-extrabold text-teal-900">NT$ ${fmtMoney(itemGrand)}</div></div>
+      </div>`;
+
+    if (isMultiCurrencyTrip(trip)) {
+      const currencies = trip.currencies && trip.currencies.length ? trip.currencies : (trip.currencies = JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)));
+      const exSumTWD = (trip.exchanges || []).reduce((s, e) => s + num(e.amount) * num(e.rate), 0);
+      budgetHtml += `
+        <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="font-bold text-slate-800">💱 支援幣別管理（可逐步新增）</span>
+            <button type="button" onclick="window._addCurrency()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold">＋ 新增幣別</button>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${currencies.map(c => `<span class="px-2 py-1 bg-slate-100 rounded-lg border border-slate-200 font-medium">${esc(c.code)} ${esc(c.name)} (${c.rate})</span>`).join('')}
+          </div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 text-xs">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <span class="font-bold text-slate-800">💰 換匯與多幣別預算明細（折合台幣：NT$ ${fmtMoney(exSumTWD)}）</span>
+            <button type="button" onclick="window._addExchange()" class="px-2.5 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-semibold">＋ 新增換匯/預算</button>
+          </div>
+          <div class="space-y-2">
+            ${(trip.exchanges || []).map(e => `
+              <div class="grid grid-cols-2 sm:grid-cols-12 gap-1.5 items-center bg-slate-50 p-2 rounded-lg border border-slate-200">
+                <input type="date" value="${esc(e.date)}" onchange="window._updItem('exchanges','${e.id}','date',this.value)" class="sm:col-span-3 px-2 py-1 border border-slate-300 rounded bg-white" />
+                <select onchange="window._onExchangeCurrencyChange('${e.id}',this.value)" class="sm:col-span-2 px-1.5 py-1 border border-slate-300 rounded bg-white font-semibold">
+                  ${currencies.map(c => `<option value="${esc(c.code)}" ${e.code===c.code?'selected':''}>${esc(c.code)} ${esc(c.name)}</option>`).join('')}
+                </select>
+                <input type="number" step="any" value="${esc(e.amount)}" placeholder="金額" onchange="window._updItem('exchanges','${e.id}','amount',this.value,true)" class="sm:col-span-2 px-2 py-1 border border-slate-300 rounded bg-white" />
+                <input type="number" step="any" value="${esc(e.rate)}" placeholder="匯率" onchange="window._updItem('exchanges','${e.id}','rate',this.value,true)" class="sm:col-span-2 px-2 py-1 border border-slate-300 rounded bg-white" />
+                <div class="sm:col-span-2 font-bold text-teal-800 text-right pr-1">NT$ ${fmtMoney(num(e.amount)*num(e.rate))}</div>
+                <button type="button" onclick="window._delItem('exchanges','${e.id}')" class="sm:col-span-1 text-rose-500 hover:text-rose-700 font-bold text-center">✕</button>
+                <input type="text" value="${esc(e.note)}" placeholder="備註（例：玉山網銀、機場提領）" onchange="window._updItem('exchanges','${e.id}','note',this.value)" class="col-span-2 sm:col-span-12 px-2 py-1 border border-slate-200 rounded bg-white text-[11px]" />
+              </div>`).join('') || '<p class="text-slate-400 text-center py-2">尚未建立換匯或外幣預算紀錄</p>'}
+          </div>
+        </div>`;
+    }
+
+    // 8. 提醒事項
+    const remindersHtml = `
+      <div class="space-y-2.5 text-xs">
+        <div class="flex gap-2">
+          <input id="newReminderInput" type="text" placeholder="輸入待辦提醒事項..." class="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg bg-white" onkeydown="if(event.key==='Enter'){event.preventDefault();window._addReminder();}" />
+          <button type="button" onclick="window._addReminder()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded-lg">＋ 加入</button>
+        </div>
+        <div class="space-y-1.5">
+          ${(trip.reminders || []).map(r => `
+            <div class="flex items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200">
+              <label class="flex items-center gap-2 flex-1 cursor-pointer">
+                <input type="checkbox" ${r.done?'checked':''} onchange="window._updItem('reminders','${r.id}','done',this.checked,true)" />
+                <span class="${r.done?'line-through text-slate-400':'text-slate-700'}">${esc(r.text)}</span>
+              </label>
+              <button type="button" onclick="window._delItem('reminders','${r.id}')" class="text-rose-500 hover:text-rose-700">✕</button>
+            </div>`).join('')}
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-600 mb-1">📝 自由備忘錄</label>
+          <textarea rows="3" placeholder="記錄打包清單、緊急聯絡電話、注意事項..." onchange="window._updTrip('memo',this.value)" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">${esc(trip.memo)}</textarea>
+        </div>
+      </div>`;
+
+    document.getElementById('accordionContainer').innerHTML = [
+      accordionShell('general', '📋', '1. 綜合資料', '', generalHtml, isOpen('general', true)),
+      accordionShell('transports', '🚄', '2. 交通', `${(trip.transports||[]).length} 段`, transportsHtml, isOpen('transports', false)),
+      accordionShell('attractions', '🏞️', '3. 景點 / 地點', `${(trip.attractions||[]).length} 處`, attractionsHtml, isOpen('attractions', false)),
+      accordionShell('restaurants', '🍜', '4. 餐廳 / 小吃', `${(trip.restaurants||[]).length} 間`, restaurantsHtml, isOpen('restaurants', false)),
+      accordionShell('accommodations', '🏨', '5. 住宿', `${(trip.accommodations||[]).length} 筆`, accommodationsHtml, isOpen('accommodations', false)),
+      accordionShell('souvenirs', '🎁', '6. 伴手禮', `${(trip.souvenirs||[]).length} 筆`, souvenirsHtml, isOpen('souvenirs', false)),
+      accordionShell('budget', '💰', isMultiCurrencyTrip(trip) ? '7. 預算與多幣別換匯' : '7. 預算總覽 (台幣)', `NT$ ${fmtMoney(calcTripTotalTWD(trip))}`, budgetHtml, isOpen('budget', false)),
+      accordionShell('reminders', '⏰', '8. 提醒事項', `${(trip.reminders||[]).length} 項`, remindersHtml, isOpen('reminders', false))
+    ].join('');
+
+    document.querySelectorAll('.accordion-header').forEach(btn => {
+      btn.addEventListener('click', () => btn.closest('.accordion-item').classList.toggle('open'));
+    });
+  }
+
+  /* ==================== 表單操作函式 (掛載至 window) ==================== */
+  window._updTrip = async (field, val, rerender = false) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    trip[field] = val;
+    if (field === 'category' && val === 'hiking') trip.mode = 'group';
+    await saveCurrentTrip();
+    if (rerender) renderPlanner();
+  };
+
+  window._addItem = async (listKey) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    trip[listKey] = trip[listKey] || [];
+    const defaults = {
+      transports: { id: uid(), type: '飛機/船', date: trip.startDate || '', bookingCode: '', fare: 0, rentFee: 0, files: [] },
+      attractions: { id: uid(), name: '', category: '風景區', customCategory: '', address: '', lat: null, lng: null, desc: '', hasTicket: false, ticketPrice: 0 },
+      restaurants: { id: uid(), name: '', address: '', lat: null, lng: null, desc: '', budget: 0 },
+      accommodations: { id: uid(), name: '', address: '', lat: null, lng: null, checkIn: '', checkOut: '', budget: 0, breakfast: false, parking: false, facilities: '' },
+      souvenirs: { id: uid(), name: '', address: '', lat: null, lng: null, desc: '', budget: 0 }
+    };
+    trip[listKey].push(defaults[listKey]);
+    await saveCurrentTrip(true);
+    renderPlanner();
+  };
+
+  window._updItem = async (listKey, itemId, field, val, rerender = false, rerenderMap = false) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    const item = (trip[listKey] || []).find(x => x.id === itemId);
+    if (!item) return;
+    item[field] = val;
+    // 切換交通類型時自動清除舊類型的費用，避免重複計算
+    if (listKey === 'transports' && field === 'type') {
+      if (val === '租汽(機)車') item.fare = 0;
+      else item.rentFee = 0;
+    }
+    await saveCurrentTrip(rerenderMap);
+    // 金額相關欄位變動時即時重繪預算總覽
+    if (rerender || ['fare', 'rentFee', 'ticketPrice', 'budget'].includes(field)) {
+      renderPlanner();
+    }
+  };
+
+  window._delItem = async (listKey, itemId) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    trip[listKey] = (trip[listKey] || []).filter(x => x.id !== itemId);
+    await saveCurrentTrip(true);
+    renderPlanner();
+  };
+
+  window._moveItem = async (listKey, idx, dir) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    const arr = trip[listKey] || [];
+    const target = idx + dir;
+    if (target < 0 || target >= arr.length) return;
+    [arr[idx], arr[target]] = [arr[target], arr[idx]];
+    await saveCurrentTrip();
+    renderPlanner();
+  };
+
+  window._uploadFile = async (ownerType, itemId, fileList) => {
+    const trip = getCurrentTrip(); if (!trip || !fileList.length) return;
+    const uploaded = await readFilesAsBase64(fileList);
+    if (ownerType === 'itinerary') {
+      trip.itineraryFiles = [...(trip.itineraryFiles || []), ...uploaded];
+    } else if (ownerType === 'transport') {
+      const t = (trip.transports || []).find(x => x.id === itemId);
+      if (t) t.files = [...(t.files || []), ...uploaded];
+    }
+    await saveCurrentTrip();
+    renderPlanner();
+    showToast(`已上傳 ${uploaded.length} 個檔案`);
+  };
+
+  window._delFile = async (ownerType, itemId, fileId) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    if (ownerType === 'itinerary') {
+      trip.itineraryFiles = (trip.itineraryFiles || []).filter(f => f.id !== fileId);
+    } else if (ownerType === 'transport') {
+      const t = (trip.transports || []).find(x => x.id === itemId);
+      if (t) t.files = (t.files || []).filter(f => f.id !== fileId);
+    }
+    await saveCurrentTrip();
+    renderPlanner();
+  };
+
+  window._addCurrency = async () => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    const code = (prompt('輸入幣別代碼（例：AUD、GBP、THB、VND）') || '').trim().toUpperCase();
+    if (!code) return;
+    trip.currencies = trip.currencies || JSON.parse(JSON.stringify(DEFAULT_CURRENCIES));
+    if (trip.currencies.some(c => c.code === code)) return showToast('該幣別已存在');
+    const name = (prompt(`輸入 ${code} 中文名稱（例：澳幣、泰銖）`) || code).trim();
+    const rate = num(prompt(`輸入 ${code} 對台幣參考匯率（例：0.95）`, '1'));
+    trip.currencies.push({ code, name, symbol: code, rate: rate || 1 });
+    await saveCurrentTrip();
+    renderPlanner();
+    showToast(`已新增幣別 ${code} ${name}`);
+  };
+
+  window._addExchange = async () => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    trip.exchanges = trip.exchanges || [];
+    const cur = (trip.currencies || DEFAULT_CURRENCIES)[1] || DEFAULT_CURRENCIES[0];
+    trip.exchanges.push({ id: uid(), date: new Date().toISOString().slice(0, 10), code: cur.code, amount: 0, rate: cur.rate, note: '' });
+    await saveCurrentTrip();
+    renderPlanner();
+  };
+
+  window._onExchangeCurrencyChange = async (exId, code) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    const ex = (trip.exchanges || []).find(x => x.id === exId);
+    const cur = (trip.currencies || DEFAULT_CURRENCIES).find(c => c.code === code);
+    if (ex && cur) { ex.code = code; ex.rate = cur.rate; }
+    await saveCurrentTrip();
+    renderPlanner();
+  };
+
+  window._addReminder = async () => {
+    const input = document.getElementById('newReminderInput');
+    const text = (input?.value || '').trim();
+    if (!text) return;
+    const trip = getCurrentTrip(); if (!trip) return;
+    trip.reminders = trip.reminders || [];
+    trip.reminders.push({ id: uid(), text, done: false });
+    await saveCurrentTrip();
+    renderPlanner();
+  };
+
+  /* ==================== Leaflet 多圖層地圖與 Google 搜尋/解析 ==================== */
+  function initMapIfNeeded() {
+    if (state.map) return;
+    const map = L.map('leafletMap', { zoomControl: true }).setView([23.6978, 120.9605], 7);
+    const layers = {
+      'Google 街道': L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: 'Google Maps' }),
+      'Google 衛星混合': L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { maxZoom: 20, attribution: 'Google Satellite' }),
+      'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
+      '臺灣通用電子地圖': L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', { maxZoom: 19, attribution: '國土測繪中心 NLSC' }),
+      'OpenTopoMap 登山': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap' })
+    };
+    layers['Google 街道'].addTo(map);
+    L.control.layers(layers, null, { position: 'topright' }).addTo(map);
+
+    state.markersLayer = L.layerGroup().addTo(map);
+    map.on('click', (e) => {
+      setTempPin(e.latlng.lat, e.latlng.lng, '', '');
+    });
+    state.map = map;
+    loadGooglePlacesIfConfigured();
+  }
+
+  function makePinIcon(color, label) {
+    return L.divIcon({
+      className: '',
+      html: `<div class="pin-marker" style="background:${color}"><span>${label}</span></div>`,
+      iconSize: [28, 28], iconAnchor: [14, 28], popupAnchor: [0, -28]
+    });
+  }
+
+  function refreshMapMarkers() {
+    if (!state.markersLayer) return;
+    state.markersLayer.clearLayers();
+    const trip = getCurrentTrip(); if (!trip) return;
+    const groups = [
+      { key: 'attractions', color: '#2563eb', badge: '景', label: '景點' },
+      { key: 'restaurants', color: '#f97316', badge: '食', label: '餐廳' },
+      { key: 'accommodations', color: '#9333ea', badge: '宿', label: '住宿' },
+      { key: 'souvenirs', color: '#059669', badge: '禮', label: '伴手禮' }
+    ];
+    groups.forEach(g => {
+      (trip[g.key] || []).forEach(item => {
+        if (item.lat == null || item.lng == null || item.lat === '' || item.lng === '') return;
+        const m = L.marker([Number(item.lat), Number(item.lng)], { icon: makePinIcon(g.color, g.badge) });
+        m.bindPopup(`
+          <div class="text-xs space-y-1 min-w-[160px]">
+            <div class="font-bold text-slate-800">[${g.label}] ${esc(item.name || '未命名')}</div>
+            ${item.address ? `<div class="text-slate-500">${esc(item.address)}</div>` : ''}
+            <a href="https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}" target="_blank" rel="noopener" class="inline-block text-blue-600 underline font-semibold">開啟 Google Maps 導航</a>
+          </div>`);
+        m.addTo(state.markersLayer);
+      });
+    });
+  }
+
+  function fitMapToMarkers() {
+    if (!state.map || !state.markersLayer) return;
+    const pts = [];
+    state.markersLayer.eachLayer(l => { if (l.getLatLng) pts.push(l.getLatLng()); });
+    if (pts.length === 1) state.map.setView(pts[0], 14);
+    else if (pts.length > 1) state.map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 15 });
+  }
+
+  window._panTo = (lat, lng) => {
+    if (window.innerWidth < 1024) { state.mobileShowMap = true; updateMobilePane(); }
+    if (state.map) state.map.setView([Number(lat), Number(lng)], 15);
+  };
+
+  function setTempPin(lat, lng, name = '', addr = '') {
+    if (!state.map) return;
+    if (state.tempMarker) state.map.removeLayer(state.tempMarker);
+    state.tempPlace = { lat: Number(lat), lng: Number(lng) };
+    state.tempMarker = L.marker([state.tempPlace.lat, state.tempPlace.lng], { icon: makePinIcon('#e11d48', '★') }).addTo(state.map);
+    state.map.setView([state.tempPlace.lat, state.tempPlace.lng], Math.max(state.map.getZoom(), 14));
+
+    document.getElementById('tempPinCoord').textContent = `${state.tempPlace.lat.toFixed(5)}, ${state.tempPlace.lng.toFixed(5)}`;
+    document.getElementById('tempPinName').value = name;
+    document.getElementById('tempPinAddr').value = addr;
+    document.getElementById('tempPinCard').classList.remove('hidden');
+
+    const isLocked = !!state.targetLock;
+    document.getElementById('tempPinLockAction').classList.toggle('hidden', !isLocked);
+    document.getElementById('tempPinAddActions').classList.toggle('hidden', isLocked);
+  }
+
+  function clearTempPin() {
+    if (state.tempMarker && state.map) state.map.removeLayer(state.tempMarker);
+    state.tempMarker = null;
+    state.tempPlace = null;
+    document.getElementById('tempPinCard').classList.add('hidden');
+  }
+
+  window._lockTarget = (listKey, itemId, focusSearch) => {
+    const trip = getCurrentTrip(); if (!trip) return;
+    const item = (trip[listKey] || []).find(x => x.id === itemId);
+    if (!item) return;
+    state.targetLock = { listKey, itemId, label: item.name || '未命名項目' };
+    document.getElementById('targetLockText').textContent = `🎯 正在為「${state.targetLock.label}」設定地點與座標`;
+    document.getElementById('targetLockBanner').classList.remove('hidden');
+    if (window.innerWidth < 1024) { state.mobileShowMap = true; updateMobilePane(); }
+    if (focusSearch) {
+      const inp = document.getElementById('mapSearchInput');
+      inp.value = item.name || item.address || '';
+      inp.focus();
+    }
+    showToast('請在地圖搜尋、貼上 Google Maps 網址或直接點擊地圖選點');
+  };
+
+  function cancelTargetLock() {
+    state.targetLock = null;
+    document.getElementById('targetLockBanner').classList.add('hidden');
+    if (state.tempPlace) {
+      document.getElementById('tempPinLockAction').classList.add('hidden');
+      document.getElementById('tempPinAddActions').classList.remove('hidden');
+    }
+  }
+
+  function parseGoogleMapsInput(raw) {
+    const text = raw.trim();
+    if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(text)) {
+      return { shortUrl: text };
+    }
+    // 優先解析 !3dLat!4dLng (最精準標記)
+    let m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), name: extractPlaceNameFromUrl(text) };
+    // 其次 /@Lat,Lng
+    m = text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), name: extractPlaceNameFromUrl(text) };
+    // ?q=Lat,Lng 或 ll=Lat,Lng
+    m = text.match(/[?&](?:q|query|ll)=(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), name: '' };
+    // 純座標 "23.4700, 120.9573"
+    m = text.match(/^(-?\d{1,2}\.\d+)\s*[,，\s]\s*(-?\d{1,3}\.\d+)$/);
+    if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]), name: '' };
+    return null;
+  }
+
+  function extractPlaceNameFromUrl(url) {
+    const m = url.match(/\/place\/([^/@?]+)/);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+  }
+
+  async function runMapSearch() {
+    const raw = document.getElementById('mapSearchInput').value.trim();
+    const resBox = document.getElementById('mapSearchResults');
+    resBox.classList.add('hidden');
+    if (!raw) return;
+
+    const parsed = parseGoogleMapsInput(raw);
+    if (parsed?.shortUrl) {
+      showToast('短網址無法直接解析座標，請在 Google 地圖開啟後複製完整網址或右鍵座標', 4000);
+      window.open(parsed.shortUrl, '_blank', 'noopener');
+      return;
+    }
+    if (parsed && !isNaN(parsed.lat) && !isNaN(parsed.lng)) {
+      setTempPin(parsed.lat, parsed.lng, parsed.name || '', '');
+      showToast('已解析 Google Maps 座標！');
+      return;
+    }
+
+    // 使用免費 Nominatim + Photon 備援搜尋
+    resBox.innerHTML = '<div class="p-3 text-xs text-slate-500">搜尋中...</div>';
+    resBox.classList.remove('hidden');
+    try {
+      const r1 = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=6&accept-language=zh-TW&q=${encodeURIComponent(raw)}`);
+      let items = (await r1.json()).map(x => ({
+        name: x.name || x.display_name.split(',')[0],
+        addr: x.display_name,
+        lat: parseFloat(x.lat),
+        lng: parseFloat(x.lon)
+      }));
+      if (!items.length) {
+        const r2 = await fetch(`https://photon.komoot.io/api/?limit=6&q=${encodeURIComponent(raw)}`);
+        const d2 = await r2.json();
+        items = (d2.features || []).map(f => ({
+          name: f.properties.name || raw,
+          addr: [f.properties.country, f.properties.city, f.properties.street].filter(Boolean).join(' '),
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0]
+        }));
+      }
+      if (!items.length) {
+        resBox.innerHTML = `<div class="p-3 text-xs text-slate-500">找不到「${esc(raw)}」，建議點擊「🌐 Google地圖」搜尋後貼回網址或座標。</div>`;
+        return;
+      }
+      resBox.innerHTML = items.map((it, i) => `
+        <button type="button" data-sr="${i}" class="w-full text-left px-3 py-2 hover:bg-teal-50 text-xs block">
+          <div class="font-bold text-slate-800">${esc(it.name)}</div>
+          <div class="text-[11px] text-slate-500 truncate">${esc(it.addr)}</div>
+        </button>`).join('');
+      resBox.querySelectorAll('[data-sr]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const it = items[Number(btn.dataset.sr)];
+          resBox.classList.add('hidden');
+          setTempPin(it.lat, it.lng, it.name, it.addr);
+        });
+      });
+    } catch {
+      resBox.innerHTML = '<div class="p-3 text-xs text-rose-500">搜尋連線異常，請改貼 Google Maps 網址或座標。</div>';
+    }
+  }
+
+  function loadGooglePlacesIfConfigured() {
+    const key = state.settings.googleMapsKey?.trim();
+    if (!key || state.googlePlacesLoaded) return;
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&language=zh-TW`;
+    s.async = true;
+    s.onload = () => {
+      state.googlePlacesLoaded = true;
+      const input = document.getElementById('mapSearchInput');
+      const ac = new google.maps.places.Autocomplete(input, { fields: ['name', 'formatted_address', 'geometry'] });
+      ac.addListener('place_changed', () => {
+        const p = ac.getPlace();
+        if (p?.geometry?.location) {
+          setTempPin(p.geometry.location.lat(), p.geometry.location.lng(), p.name || '', p.formatted_address || '');
+        }
+      });
+      showToast('已啟用原生 Google Places 搜尋');
+    };
+    document.head.appendChild(s);
+  }
+
+  /* ==================== 雲端同步與 JSON 備份 ==================== */
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+      state.settings = { googleClientId: saved.googleClientId || '', googleMapsKey: saved.googleMapsKey || '' };
+    } catch {}
+  }
+
+  function requestDriveToken(cb) {
+    const clientId = document.getElementById('cfgGoogleClientId').value.trim();
+    if (!clientId) return showToast('請先填入 Google OAuth Client ID');
+    if (!window.google?.accounts?.oauth2) return showToast('Google 驗證模組尚未載入完成，請稍候再試');
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp) => {
+        if (resp.error) return showToast('Google 授權失敗：' + resp.error);
+        state.driveToken = resp.access_token;
+        cb(resp.access_token);
+      }
+    });
+    client.requestAccessToken();
+  }
+
+  async function uploadToDrive() {
+    const status = document.getElementById('driveStatus');
+    requestDriveToken(async (token) => {
+      try {
+        status.textContent = '⏳ 正在上傳至 Google 雲端硬碟...';
+        const fileName = 'travel_planner_backup.json';
+        const q = encodeURIComponent(`name='${fileName}' and trashed=false`);
+        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const found = (await searchRes.json()).files?.[0];
+        const content = JSON.stringify({ exportedAt: new Date().toISOString(), trips: state.trips });
+
+        if (found) {
+          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${found.id}?uploadType=media`, {
+            method: 'PATCH',
+            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: content
+          });
+        } else {
+          const meta = { name: fileName, mimeType: 'application/json' };
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+          form.append('file', new Blob([content], { type: 'application/json' }));
+          await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: form
+          });
+        }
+        status.textContent = `✅ 已成功匯出至雲端硬碟 (${new Date().toLocaleTimeString()})`;
+        showToast('Google 雲端備份成功！');
+      } catch (e) {
+        status.textContent = '❌ 上傳失敗：' + e.message;
+      }
+    });
+  }
+
+  async function downloadFromDrive() {
+    const status = document.getElementById('driveStatus');
+    requestDriveToken(async (token) => {
+      try {
+        status.textContent = '⏳ 正在讀取雲端備份檔...';
+        const q = encodeURIComponent(`name='travel_planner_backup.json' and trashed=false`);
+        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const found = (await searchRes.json()).files?.[0];
+        if (!found) { status.textContent = '找不到雲端檔案 travel_planner_backup.json'; return; }
+        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${found.id}?alt=media`, {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const data = await fileRes.json();
+        const trips = Array.isArray(data) ? data : data.trips;
+        if (!Array.isArray(trips)) throw new Error('檔案格式不正確');
+        await dbReplaceAll(trips);
+        state.trips = trips;
+        backToPortal();
+        status.textContent = `✅ 已從雲端還原 ${trips.length} 筆旅程！`;
+        showToast(`已從 Google 雲端匯入 ${trips.length} 筆旅程`);
+      } catch (e) {
+        status.textContent = '❌ 匯入失敗：' + e.message;
+      }
+    });
+  }
+
+  /* ==================== 彈窗控制與事件綁定 ==================== */
+  function openNewTripModal(presetCategory = 'domestic') {
+    document.getElementById('newTripForm').reset();
+    const catSel = document.getElementById('ntCategory');
+    catSel.value = presetCategory;
+    syncNewTripCategoryUI();
+    document.getElementById('newTripModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('ntTitle').focus(), 50);
+  }
+
+  function syncNewTripCategoryUI() {
+    const isHiking = document.getElementById('ntCategory').value === 'hiking';
+    document.getElementById('ntModeWrap').classList.toggle('hidden', isHiking);
+    document.getElementById('ntHikingRegionWrap').classList.toggle('hidden', !isHiking);
+  }
+
+  function openSettingsModal() {
+    document.getElementById('cfgGoogleClientId').value = state.settings.googleClientId || '';
+    document.getElementById('cfgGoogleMapsKey').value = state.settings.googleMapsKey || '';
+    document.getElementById('driveStatus').textContent = '';
+    document.getElementById('settingsModal').classList.remove('hidden');
+  }
+
+  async function duplicateTrip(tripId) {
+    const orig = state.trips.find(t => t.id === tripId);
+    if (!orig) return;
+    const copy = JSON.parse(JSON.stringify(orig));
+    copy.id = uid();
+    copy.title = orig.title + ' (複製)';
+    copy.updatedAt = Date.now();
+    state.trips.unshift(copy);
+    await dbPut(copy);
+    showToast('已複製旅程');
+    if (state.currentTripId) openTripPlanner(copy.id);
+    else renderPortal();
+  }
+
+  async function deleteTrip(tripId) {
+    const t = state.trips.find(x => x.id === tripId);
+    if (!t || !confirm(`確定要刪除「${t.title}」嗎？此動作無法復原。`)) return;
+    state.trips = state.trips.filter(x => x.id !== tripId);
+    await dbDelete(tripId);
+    renderPortal();
+    showToast('已刪除旅程');
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    loadSettings();
+    let trips = await dbGetAll();
+    if (!trips.length) {
+      trips = createSampleTrips();
+      await dbReplaceAll(trips);
+    }
+    state.trips = trips;
+    renderPortal();
+
+    // 入口頁事件
+    document.getElementById('btnPortalNewTrip').addEventListener('click', () => openNewTripModal('domestic'));
+    document.getElementById('btnPortalSettings').addEventListener('click', openSettingsModal);
+    document.getElementById('btnPlannerSettings').addEventListener('click', openSettingsModal);
+
+    const searchInput = document.getElementById('portalSearch');
+    const clearBtn = document.getElementById('btnClearSearch');
+    searchInput.addEventListener('input', (e) => {
+      state.portalQuery = e.target.value;
+      clearBtn.classList.toggle('hidden', !state.portalQuery);
+      renderPortal();
+    });
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = ''; state.portalQuery = '';
+      clearBtn.classList.add('hidden'); renderPortal();
+    });
+
+    document.getElementById('portalTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.portal-tab');
+      if (!btn) return;
+      state.portalTab = btn.dataset.tab;
+      renderPortal();
+    });
+
+    document.getElementById('portalTripSections').addEventListener('click', (e) => {
+      const quick = e.target.closest('[data-quick-add]');
+      if (quick) return openNewTripModal(quick.dataset.quickAdd);
+      const dup = e.target.closest('[data-dup-trip]');
+      if (dup) return duplicateTrip(dup.dataset.dupTrip);
+      const del = e.target.closest('[data-del-trip]');
+      if (del) return deleteTrip(del.dataset.delTrip);
+      const card = e.target.closest('[data-open-trip]');
+      if (card) return openTripPlanner(card.dataset.openTrip);
+    });
+
+    // 新增旅程彈窗
+    document.getElementById('ntCategory').addEventListener('change', syncNewTripCategoryUI);
+    const closeNewTrip = () => document.getElementById('newTripModal').classList.add('hidden');
+    document.getElementById('btnCloseNewTrip').addEventListener('click', closeNewTrip);
+    document.getElementById('btnCancelNewTrip').addEventListener('click', closeNewTrip);
+    document.getElementById('newTripForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const cat = document.getElementById('ntCategory').value;
+      const newTrip = {
+        id: uid(),
+        title: document.getElementById('ntTitle').value.trim(),
+        category: cat,
+        mode: cat === 'hiking' ? 'group' : document.getElementById('ntMode').value,
+        hikingRegion: cat === 'hiking' ? document.getElementById('ntHikingRegion').value : 'domestic',
+        startDate: document.getElementById('ntStart').value,
+        endDate: document.getElementById('ntEnd').value,
+        location: document.getElementById('ntLocation').value.trim(),
+        companions: document.getElementById('ntCompanions').value.trim(),
+        itineraryFiles: [], transports: [], attractions: [], restaurants: [], accommodations: [], souvenirs: [],
+        currencies: JSON.parse(JSON.stringify(DEFAULT_CURRENCIES)), exchanges: [], reminders: [], memo: '',
+        updatedAt: Date.now()
+      };
+      state.trips.unshift(newTrip);
+      await dbPut(newTrip);
+      closeNewTrip();
+      showToast('已建立新旅程！');
+      openTripPlanner(newTrip.id);
+    });
+
+    // 詳細頁工具列
+    document.getElementById('btnBackPortal').addEventListener('click', backToPortal);
+    document.getElementById('btnExpandAll').addEventListener('click', () => document.querySelectorAll('.accordion-item').forEach(el => el.classList.add('open')));
+    document.getElementById('btnCollapseAll').addEventListener('click', () => document.querySelectorAll('.accordion-item').forEach(el => el.classList.remove('open')));
+    document.getElementById('btnDuplicateCurrent').addEventListener('click', () => duplicateTrip(state.currentTripId));
+    document.getElementById('btnMobileToggle').addEventListener('click', () => { state.mobileShowMap = !state.mobileShowMap; updateMobilePane(); });
+    window.addEventListener('resize', updateMobilePane);
+
+    // 地圖互動控制
+    document.getElementById('btnMapSearch').addEventListener('click', runMapSearch);
+    document.getElementById('mapSearchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMapSearch(); } });
+    document.getElementById('btnOpenGoogleMaps').addEventListener('click', () => {
+      const q = document.getElementById('mapSearchInput').value.trim();
+      window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q || getCurrentTrip()?.location || '台灣')}`, '_blank', 'noopener');
+    });
+    document.getElementById('btnFitBounds').addEventListener('click', fitMapToMarkers);
+    document.getElementById('btnCancelLock').addEventListener('click', cancelTargetLock);
+    document.getElementById('btnCloseTempPin').addEventListener('click', clearTempPin);
+
+    document.getElementById('btnApplyTempToTarget').addEventListener('click', async () => {
+      if (!state.targetLock || !state.tempPlace) return;
+      const trip = getCurrentTrip();
+      const item = (trip[state.targetLock.listKey] || []).find(x => x.id === state.targetLock.itemId);
+      if (item) {
+        const nm = document.getElementById('tempPinName').value.trim();
+        const ad = document.getElementById('tempPinAddr').value.trim();
+        if (nm && !item.name) item.name = nm;
+        if (ad) item.address = ad;
+        item.lat = state.tempPlace.lat;
+        item.lng = state.tempPlace.lng;
+        await saveCurrentTrip(true);
+        renderPlanner();
+        showToast('已套用地點與座標！');
+      }
+      cancelTargetLock();
+      clearTempPin();
+    });
+
+    document.querySelectorAll('.temp-add-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!state.tempPlace) return;
+        const type = btn.dataset.addType;
+        const trip = getCurrentTrip(); if (!trip) return;
+        const name = document.getElementById('tempPinName').value.trim() || '新地點';
+        const addr = document.getElementById('tempPinAddr').value.trim();
+        const base = { id: uid(), name, address: addr, lat: state.tempPlace.lat, lng: state.tempPlace.lng };
+        if (type === 'attractions') trip.attractions.push({ ...base, category: '風景區', customCategory: '', desc: '', hasTicket: false, ticketPrice: 0 });
+        if (type === 'restaurants') trip.restaurants.push({ ...base, desc: '', budget: 0 });
+        if (type === 'accommodations') trip.accommodations.push({ ...base, checkIn: '', checkOut: '', budget: 0, breakfast: false, parking: false, facilities: '' });
+        if (type === 'souvenirs') trip.souvenirs.push({ ...base, desc: '', budget: 0 });
+        await saveCurrentTrip(true);
+        renderPlanner();
+        const acc = document.querySelector(`.accordion-item[data-acc="${type}"]`);
+        if (acc) acc.classList.add('open');
+        clearTempPin();
+        showToast(`已加入「${name}」`);
+      });
+    });
+
+    // 設定與備份彈窗
+    document.getElementById('btnCloseSettings').addEventListener('click', () => document.getElementById('settingsModal').classList.add('hidden'));
+    document.getElementById('btnSaveSettings').addEventListener('click', () => {
+      state.settings.googleClientId = document.getElementById('cfgGoogleClientId').value.trim();
+      state.settings.googleMapsKey = document.getElementById('cfgGoogleMapsKey').value.trim();
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+      loadGooglePlacesIfConfigured();
+      document.getElementById('settingsModal').classList.add('hidden');
+      showToast('設定已儲存');
+    });
+
+    document.getElementById('btnExportJson').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), trips: state.trips }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `travel_planner_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      showToast('已匯出 JSON 備份檔');
+    });
+
+    document.getElementById('inputImportJson').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const imported = Array.isArray(parsed) ? parsed : parsed.trips;
+        if (!Array.isArray(imported)) throw new Error('無效的 JSON 格式');
+        if (!confirm(`即將匯入 ${imported.length} 筆旅程並覆蓋目前本機資料，確定嗎？`)) return;
+        await dbReplaceAll(imported);
+        state.trips = imported;
+        document.getElementById('settingsModal').classList.add('hidden');
+        backToPortal();
+        showToast(`已成功匯入 ${imported.length} 筆旅程`);
+      } catch (err) {
+        showToast('匯入失敗：' + err.message);
+      } finally {
+        e.target.value = '';
+      }
+    });
+
+    document.getElementById('btnDriveUpload').addEventListener('click', uploadToDrive);
+    document.getElementById('btnDriveDownload').addEventListener('click', downloadFromDrive);
+  });
+})();
+</script>
+</body>
+</html>
